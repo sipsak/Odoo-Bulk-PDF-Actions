@@ -15,7 +15,6 @@
 // @icon            https://raw.githubusercontent.com/sipsak/odoo-image-enlarger/refs/heads/main/icon.png
 // @updateURL       https://raw.githubusercontent.com/sipsak/Odoo-Bulk-PDF-Actions/main/Odoo-Bulk-PDF-Actions.user.js
 // @downloadURL     https://raw.githubusercontent.com/sipsak/Odoo-Bulk-PDF-Actions/main/Odoo-Bulk-PDF-Actions.user.js
-
 // ==/UserScript==
 
 (function() {
