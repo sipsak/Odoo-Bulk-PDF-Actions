@@ -2,7 +2,7 @@
 // @name            Odoo Bulk PDF Actions
 // @name:tr         Odoo Toplu PDF İşlemleri
 // @namespace       https://github.com/sipsak
-// @version         1.3
+// @version         1.3.1
 // @description     Adds the ability to open and download selected invoices in bulk on the Incoming Invoices, Supplier Invoices and Customer Invoices screens
 // @description:tr  Gelen Faturalar, Tedarikçi Faturaları ve Müşteri Faturaları ekranlarında seçilen faturaları toplu olarak açma ve indirme özellikleri ekler
 // @author          Burak Şipşak
@@ -54,7 +54,7 @@
     }
 
     // Kullanılacak ID sütununu belirler:
-// Tedarikçi Faturalarında "x_studio_pdf_id", diğerlerinde "id"
+    // Tedarikçi Faturalarında "x_studio_pdf_id", diğerlerinde "id"
     function getIdColumnName() {
         const type = getInvoiceType();
         return type === "supplier" ? "x_studio_pdf_id" : "id";
@@ -149,12 +149,13 @@
             progressContainer.style.borderRadius = "5px";
             progressContainer.style.fontSize = "14px";
             progressContainer.style.zIndex = "9999";
-            progressContainer.style.width = "300px";
+            progressContainer.style.width = "400px";
             progressContainer.style.textAlign = "center";
 
             const progressText = document.createElement("div");
             progressText.id = "download-progress-text";
-            progressText.textContent = "İşlem devam ediyor... (0%)";
+            progressText.textContent = "İşlem devam ediyor... (0%)\İşlem tamamlanana kadar seçiminizi değiştirmeyin.";
+            progressText.style.whiteSpace = 'pre-line';
             progressContainer.appendChild(progressText);
 
             const progressBar = document.createElement("div");
@@ -182,7 +183,7 @@
         const progressText = document.getElementById("download-progress-text");
         const progressFill = document.getElementById("download-progress-fill");
         if (progressText && progressFill) {
-            progressText.textContent = `İşlem devam ediyor... (${percent}%)`;
+            progressText.textContent = `İşlem devam ediyor... (${percent}%)\nİşlem tamamlanana kadar seçiminizi değiştirmeyin.`;
             progressFill.style.width = `${percent}%`;
         }
     }
