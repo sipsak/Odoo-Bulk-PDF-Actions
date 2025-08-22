@@ -56,107 +56,185 @@
         return document.querySelectorAll('tr.o_data_row.o_data_row_selected');
     }
 
+    function createModalBackdrop() {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        backdrop.style.zIndex = '1040';
+        return backdrop;
+    }
+
+    function createModalContainer() {
+        const container = document.createElement('div');
+        container.className = 'modal fade show';
+        container.style.display = 'block';
+        container.style.zIndex = '1050';
+        container.setAttribute('tabindex', '-1');
+        container.setAttribute('aria-modal', 'true');
+        container.setAttribute('role', 'dialog');
+
+        const dialog = document.createElement('div');
+        dialog.className = 'modal-dialog modal-dialog-centered modal-sm';
+
+        container.appendChild(dialog);
+        return { container, dialog };
+    }
+
     function showCustomAlert(message) {
-        const existingAlert = document.getElementById('custom-alert-box');
-        if (existingAlert) { existingAlert.remove(); }
+        // Remove existing modals
+        const existingModals = document.querySelectorAll('.custom-alert-modal');
+        existingModals.forEach(modal => modal.remove());
 
-        const alertBox = document.createElement('div');
-        alertBox.id = 'custom-alert-box';
-        alertBox.style.position = 'fixed';
-        alertBox.style.top = '50%';
-        alertBox.style.left = '50%';
-        alertBox.style.transform = 'translate(-50%, -50%)';
-        alertBox.style.backgroundColor = 'white';
-        alertBox.style.padding = '20px';
-        alertBox.style.borderRadius = '5px';
-        alertBox.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        alertBox.style.zIndex = '10000';
-        alertBox.style.minWidth = '300px';
-        alertBox.style.textAlign = 'center';
+        const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-alert');
+        existingBackdrops.forEach(backdrop => backdrop.remove());
 
-        const messageEl = document.createElement('p');
-        messageEl.textContent = message;
-        messageEl.style.marginBottom = '15px';
+        // Create backdrop
+        const backdrop = createModalBackdrop();
+        backdrop.classList.add('custom-alert');
+        document.body.appendChild(backdrop);
+
+        // Create modal
+        const { container, dialog } = createModalContainer();
+        container.classList.add('custom-alert-modal');
+
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+
+        const header = document.createElement('header');
+        header.className = 'modal-header';
+
+        const title = document.createElement('h4');
+        title.className = 'modal-title text-break';
+        title.textContent = 'Bilgi';
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'btn-close';
+        closeButton.setAttribute('aria-label', 'Close');
+
+        header.appendChild(title);
+        header.appendChild(closeButton);
+
+        const body = document.createElement('main');
+        body.className = 'modal-body';
+        body.textContent = message;
+
+        const footer = document.createElement('footer');
+        footer.className = 'modal-footer justify-content-start';
 
         const okButton = document.createElement('button');
+        okButton.className = 'btn btn-primary';
         okButton.textContent = 'Tamam';
-        okButton.style.padding = '8px 16px';
-        okButton.style.backgroundColor = '#0275d8';
-        okButton.style.color = 'white';
-        okButton.style.border = 'none';
-        okButton.style.borderRadius = '4px';
-        okButton.style.cursor = 'pointer';
 
-        okButton.addEventListener('click', function() { alertBox.remove(); });
+        footer.appendChild(okButton);
 
-        alertBox.appendChild(messageEl);
-        alertBox.appendChild(okButton);
-        document.body.appendChild(alertBox);
+        content.appendChild(header);
+        content.appendChild(body);
+        content.appendChild(footer);
+        dialog.appendChild(content);
+
+        document.body.appendChild(container);
+
+        // Event handlers
+        const closeModal = () => {
+            container.remove();
+            backdrop.remove();
+        };
+
+        okButton.addEventListener('click', closeModal);
+        closeButton.addEventListener('click', closeModal);
+        backdrop.addEventListener('click', closeModal);
+
+        // Focus on OK button
         okButton.focus();
     }
 
     function showConfirmDialog(message, onConfirm, onCancel) {
-        const existingDialog = document.getElementById('custom-confirm-box');
-        if (existingDialog) { existingDialog.remove(); }
+        // Remove existing modals
+        const existingModals = document.querySelectorAll('.custom-confirm-modal');
+        existingModals.forEach(modal => modal.remove());
 
-        const dialogBox = document.createElement('div');
-        dialogBox.id = 'custom-confirm-box';
-        dialogBox.style.position = 'fixed';
-        dialogBox.style.top = '50%';
-        dialogBox.style.left = '50%';
-        dialogBox.style.transform = 'translate(-50%, -50%)';
-        dialogBox.style.backgroundColor = 'white';
-        dialogBox.style.padding = '20px';
-        dialogBox.style.borderRadius = '5px';
-        dialogBox.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        dialogBox.style.zIndex = '10000';
-        dialogBox.style.minWidth = '350px';
-        dialogBox.style.textAlign = 'center';
+        const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-confirm');
+        existingBackdrops.forEach(backdrop => backdrop.remove());
 
-        const messageEl = document.createElement('p');
-        messageEl.textContent = message;
-        messageEl.style.marginBottom = '20px';
-        messageEl.style.fontSize = '14px';
+        // Create backdrop
+        const backdrop = createModalBackdrop();
+        backdrop.classList.add('custom-confirm');
+        document.body.appendChild(backdrop);
 
-        const buttonContainer = document.createElement('div');
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'center';
-        buttonContainer.style.gap = '10px';
+        // Create modal
+        const { container, dialog } = createModalContainer();
+        container.classList.add('custom-confirm-modal');
+
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+
+        const header = document.createElement('header');
+        header.className = 'modal-header';
+
+        const title = document.createElement('h4');
+        title.className = 'modal-title text-break';
+        title.textContent = 'Onay';
+
+        const closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'btn-close';
+        closeButton.setAttribute('aria-label', 'Close');
+
+        header.appendChild(title);
+        header.appendChild(closeButton);
+
+        const body = document.createElement('main');
+        body.className = 'modal-body';
+        body.textContent = message;
+
+        const footer = document.createElement('footer');
+        footer.className = 'modal-footer justify-content-start';
 
         const yesButton = document.createElement('button');
+        yesButton.className = 'btn btn-primary me-2';
         yesButton.textContent = 'Evet';
-        yesButton.style.padding = '8px 16px';
-        yesButton.style.backgroundColor = '#5cb85c';
-        yesButton.style.color = 'white';
-        yesButton.style.border = 'none';
-        yesButton.style.borderRadius = '4px';
-        yesButton.style.cursor = 'pointer';
 
         const noButton = document.createElement('button');
+        noButton.className = 'btn btn-secondary';
         noButton.textContent = 'Hayır';
-        noButton.style.padding = '8px 16px';
-        noButton.style.backgroundColor = '#d9534f';
-        noButton.style.color = 'white';
-        noButton.style.border = 'none';
-        noButton.style.borderRadius = '4px';
-        noButton.style.cursor = 'pointer';
 
-        yesButton.addEventListener('click', function() {
-            dialogBox.remove();
+        footer.appendChild(yesButton);
+        footer.appendChild(noButton);
+
+        content.appendChild(header);
+        content.appendChild(body);
+        content.appendChild(footer);
+        dialog.appendChild(content);
+
+        document.body.appendChild(container);
+
+        // Event handlers
+        const closeModal = () => {
+            container.remove();
+            backdrop.remove();
+        };
+
+        yesButton.addEventListener('click', () => {
+            closeModal();
             if (onConfirm) onConfirm();
         });
 
-        noButton.addEventListener('click', function() {
-            dialogBox.remove();
+        noButton.addEventListener('click', () => {
+            closeModal();
             if (onCancel) onCancel();
         });
 
-        buttonContainer.appendChild(yesButton);
-        buttonContainer.appendChild(noButton);
+        closeButton.addEventListener('click', () => {
+            closeModal();
+            if (onCancel) onCancel();
+        });
 
-        dialogBox.appendChild(messageEl);
-        dialogBox.appendChild(buttonContainer);
-        document.body.appendChild(dialogBox);
+        backdrop.addEventListener('click', () => {
+            closeModal();
+            if (onCancel) onCancel();
+        });
+
+        // Focus on Yes button
         yesButton.focus();
     }
 
@@ -208,7 +286,7 @@
 
             const progressText = document.createElement("div");
             progressText.id = "download-progress-text";
-            progressText.textContent = "İşlem devam ediyor... (0%)\İşlem tamamlanana kadar seçiminizi değiştirmeyin.";
+            progressText.textContent = "İşlem devam ediyor... (0%)\nİşlem tamamlanana kadar seçiminizi değiştirmeyin.";
             progressText.style.whiteSpace = 'pre-line';
             progressContainer.appendChild(progressText);
 
@@ -370,6 +448,7 @@
         }
 
         showConfirmDialog(
+            "Sadece ilk sayfalar baz alınsın mı?",
             () => mergePDFs(selectedRows, true),
             () => mergePDFs(selectedRows, false)
         );
