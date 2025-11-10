@@ -76,7 +76,7 @@
         container.setAttribute('role', 'dialog');
 
         const dialog = document.createElement('div');
-        dialog.className = 'modal-dialog modal-dialog-centered modal-sm';
+        dialog.className = 'modal-dialog modal-dialog-centered modal-md';
 
         container.appendChild(dialog);
         return { container, dialog };
@@ -229,24 +229,70 @@
         yesButton.focus();
     }
 
-    function isIdColumnVisible() {
-        const targetColumn = getIdColumnName();
-        const headers = document.querySelectorAll('th.o_column_sortable');
-        for (let i = 0; i < headers.length; i++) {
-            if (headers[i].getAttribute('data-name') === targetColumn) {
-                return true;
-            }
+    function checkSelectionWarning(callback) {
+        const selectionBox = document.querySelector('div.list-group[role="alert"] .list-group-item');
+        if (!selectionBox) {
+            callback();
+            return;
         }
-        return false;
+
+        const selectAllBtn = selectionBox.querySelector('.btn-info');
+        if (selectAllBtn) {
+            callback();
+            return;
+        }
+
+        const firstChild = selectionBox.firstElementChild;
+        if (firstChild && firstChild.tagName === 'SPAN') {
+            const totalCount = firstChild.querySelector('b')?.textContent || 'BİLİNMEYEN';
+            const pageCount = getSelectedRows().length;
+
+            if (String(totalCount) !== String(pageCount)) {
+                const message = `Toplamda ${totalCount} kayıt seçilmiş fakat devam etmeniz halinde sadece ekranda gözüken ${pageCount} kayıt dikkate alınacaktır. Devam edilsin mi?`;
+                showConfirmDialog(message, callback, () => {});
+            } else {
+                callback();
+            }
+        } else {
+            callback();
+        }
+    }
+
+    function getMissingColumns() {
+        const type = getInvoiceType();
+        let requiredColumns = [];
+
+        if (type === "supplier") {
+            requiredColumns = ["x_studio_pdf_id", "gib_invoice_name"];
+        } else if (type === "incoming") {
+            requiredColumns = ["id", "name"];
+        } else if (type === "customer") {
+            requiredColumns = ["id", "gib_invoice_name"];
+        } else if (type === "despatch") {
+            requiredColumns = ["id", "name"];
+        } else {
+            return [];
+        }
+
+        const headers = document.querySelectorAll('th.o_column_sortable');
+        const visibleColumns = new Set();
+        headers.forEach(h => {
+            const dataName = h.getAttribute('data-name');
+            if (dataName) {
+                visibleColumns.add(dataName);
+            }
+        });
+
+        const missing = requiredColumns.filter(col => !visibleColumns.has(col));
+        return missing;
     }
 
     function checkIdColumnAndProcess(callback) {
-        if (!isIdColumnVisible()) {
-            if(window.location.href.includes("model=account.move") && getInvoiceType() === "supplier") {
-                showCustomAlert("Bu butonun çalışabilmesi için PDF ID sütununu göstermeniz gerekir.");
-            } else {
-                showCustomAlert("Bu butonun çalışabilmesi için ID sütununu göstermeniz gerekir.");
-            }
+        const missingColumns = getMissingColumns();
+
+        if (missingColumns.length > 0) {
+            const missingColsStr = missingColumns.join(', ');
+            showCustomAlert(`Bu özelliğin çalışabilmesi için şu alanları göstermeniz gerekmektedir: ${missingColsStr}`);
             return false;
         }
         callback();
@@ -421,26 +467,28 @@
                 return;
             }
 
-            if (selectedRows.length > 10) {
-                showConfirmDialog(
-                    `Toplam ${selectedRows.length} adet kayıt yeni sekmede açılacak, onaylıyor musunuz?`,
-                    () => {
-                        selectedRows.forEach(row => {
-                            const invoiceId = getInvoiceId(row);
-                            const url = getPdfUrl(invoiceId);
-                            window.open(url, '_blank');
-                        });
-                    },
-                    () => {
-                    }
-                );
-            } else {
-                selectedRows.forEach(row => {
-                    const invoiceId = getInvoiceId(row);
-                    const url = getPdfUrl(invoiceId);
-                    window.open(url, '_blank');
-                });
-            }
+            checkSelectionWarning(() => {
+                if (selectedRows.length > 10) {
+                    showConfirmDialog(
+                        `Toplam ${selectedRows.length} adet kayıt yeni sekmede açılacak, onaylıyor musunuz?`,
+                        () => {
+                            selectedRows.forEach(row => {
+                                const invoiceId = getInvoiceId(row);
+                                const url = getPdfUrl(invoiceId);
+                                window.open(url, '_blank');
+                            });
+                        },
+                        () => {
+                        }
+                    );
+                } else {
+                    selectedRows.forEach(row => {
+                        const invoiceId = getInvoiceId(row);
+                        const url = getPdfUrl(invoiceId);
+                        window.open(url, '_blank');
+                    });
+                }
+            });
         });
     }
 
@@ -455,14 +503,17 @@
             showCustomAlert("Lütfen en az bir fatura seçiniz!");
             return;
         }
-        if (selectedRows.length === 1) {
-            const invoiceId = getInvoiceId(selectedRows[0]);
-            const invoiceNo = getInvoiceNo(selectedRows[0]);
-            const url = getPdfUrl(invoiceId);
-            downloadSinglePDF(url, `${invoiceNo}.pdf`);
-        } else {
-            downloadMultiplePDFsAsZip(selectedRows);
-        }
+
+        checkSelectionWarning(() => {
+            if (selectedRows.length === 1) {
+                const invoiceId = getInvoiceId(selectedRows[0]);
+                const invoiceNo = getInvoiceNo(selectedRows[0]);
+                const url = getPdfUrl(invoiceId);
+                downloadSinglePDF(url, `${invoiceNo}.pdf`);
+            } else {
+                downloadMultiplePDFsAsZip(selectedRows);
+            }
+        });
     }
 
     function downloadSinglePDF(url, filename) {
@@ -527,11 +578,13 @@
             return;
         }
 
-        showConfirmDialog(
-            "Sadece ilk sayfalar baz alınsın mı?",
-            () => mergePDFs(selectedRows, true),
-            () => mergePDFs(selectedRows, false)
-        );
+        checkSelectionWarning(() => {
+            showConfirmDialog(
+                "Sadece ilk sayfalar baz alınsın mı?",
+                () => mergePDFs(selectedRows, true),
+                () => mergePDFs(selectedRows, false)
+            );
+        });
     }
 
     async function mergePDFs(selectedRows, firstPageOnly) {
