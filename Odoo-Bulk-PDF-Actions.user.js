@@ -2,12 +2,11 @@
 // @name            Odoo Bulk PDF Actions
 // @name:tr         Odoo Toplu PDF İşlemleri
 // @namespace       https://github.com/sipsak
-// @version         1.5
+// @version         1.5.1
 // @description     Adds the ability to open and download selected invoices in bulk on the Incoming Invoices, Vendor Bills, Customers Invoices and Incoming Waybills screens
 // @description:tr  Gelen Faturalar, Tedarikçi Faturaları, Müşteri Faturaları ve Gelen İrsaliyeler ekranlarında seçilen faturaları toplu olarak açma ve indirme özellikleri ekler
 // @author          Burak Şipşak
-// @match           https://portal.bskhvac.com.tr/*
-// @match           https://*.odoo.com/*
+// @match           *://*/*
 // @grant           none
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js
@@ -20,447 +19,489 @@
 (function() {
     'use strict';
 
-    function getActionParam() {
-        const href = window.location.href;
-        const match = href.match(/action=(\d+)/);
-        return match ? match[1] : null;
-    }
+    async function init() {
+        const scriptTag = document.getElementById('web.layout.odooscript');
+        if (!scriptTag) {
+            return;
+        }
 
-    function getInvoiceType() {
-        const href = window.location.href;
-        if (href.includes("model=gib.incoming.invoice")) {
-            return "incoming";
+        function getActionParam() {
+            const href = window.location.href;
+            const match = href.match(/action=(\d+)/);
+            return match ? match[1] : null;
         }
-        if (href.includes("model=gib.incoming.despatch")) {
-            return "despatch";
-        }
-        if (href.includes("model=account.move")) {
-            const action = getActionParam();
-            if (action === "245") {
-                return "supplier";
-            } else if (action === "243") {
-                return "customer";
+
+        function getInvoiceType() {
+            const href = window.location.href;
+            if (href.includes("model=gib.incoming.invoice")) {
+                return "incoming";
             }
-        }
-        return null;
-    }
-
-    function isInvoicePage() {
-        const type = getInvoiceType();
-        return (type === "incoming" || type === "supplier" || type === "customer" || type === "despatch");
-    }
-
-    function getIdColumnName() {
-        const type = getInvoiceType();
-        return type === "supplier" ? "x_studio_pdf_id" : "id";
-    }
-
-    function getSelectedRows() {
-        return document.querySelectorAll('tr.o_data_row.o_data_row_selected');
-    }
-
-    function createModalBackdrop() {
-        const backdrop = document.createElement('div');
-        backdrop.className = 'modal-backdrop fade show';
-        backdrop.style.zIndex = '1040';
-        return backdrop;
-    }
-
-    function createModalContainer() {
-        const container = document.createElement('div');
-        container.className = 'modal fade show';
-        container.style.display = 'block';
-        container.style.zIndex = '1050';
-        container.setAttribute('tabindex', '-1');
-        container.setAttribute('aria-modal', 'true');
-        container.setAttribute('role', 'dialog');
-
-        const dialog = document.createElement('div');
-        dialog.className = 'modal-dialog modal-dialog-centered modal-md';
-
-        container.appendChild(dialog);
-        return { container, dialog };
-    }
-
-    function showCustomAlert(message) {
-        const existingModals = document.querySelectorAll('.custom-alert-modal');
-        existingModals.forEach(modal => modal.remove());
-
-        const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-alert');
-        existingBackdrops.forEach(backdrop => backdrop.remove());
-
-        const backdrop = createModalBackdrop();
-        backdrop.classList.add('custom-alert');
-        document.body.appendChild(backdrop);
-
-        const { container, dialog } = createModalContainer();
-        container.classList.add('custom-alert-modal');
-
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-
-        const header = document.createElement('header');
-        header.className = 'modal-header';
-
-        const title = document.createElement('h4');
-        title.className = 'modal-title text-break';
-        title.textContent = 'Bilgi';
-
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.setAttribute('aria-label', 'Close');
-
-        header.appendChild(title);
-        header.appendChild(closeButton);
-
-        const body = document.createElement('main');
-        body.className = 'modal-body';
-        body.textContent = message;
-
-        const footer = document.createElement('footer');
-        footer.className = 'modal-footer justify-content-start';
-
-        const okButton = document.createElement('button');
-        okButton.className = 'btn btn-primary';
-        okButton.textContent = 'Tamam';
-
-        footer.appendChild(okButton);
-
-        content.appendChild(header);
-        content.appendChild(body);
-        content.appendChild(footer);
-        dialog.appendChild(content);
-
-        document.body.appendChild(container);
-
-        const closeModal = () => {
-            container.remove();
-            backdrop.remove();
-        };
-
-        okButton.addEventListener('click', closeModal);
-        closeButton.addEventListener('click', closeModal);
-        backdrop.addEventListener('click', closeModal);
-
-        okButton.focus();
-    }
-
-    function showConfirmDialog(message, onConfirm, onCancel) {
-        const existingModals = document.querySelectorAll('.custom-confirm-modal');
-        existingModals.forEach(modal => modal.remove());
-
-        const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-confirm');
-        existingBackdrops.forEach(backdrop => backdrop.remove());
-
-        const backdrop = createModalBackdrop();
-        backdrop.classList.add('custom-confirm');
-        document.body.appendChild(backdrop);
-
-        const { container, dialog } = createModalContainer();
-        container.classList.add('custom-confirm-modal');
-
-        const content = document.createElement('div');
-        content.className = 'modal-content';
-
-        const header = document.createElement('header');
-        header.className = 'modal-header';
-
-        const title = document.createElement('h4');
-        title.className = 'modal-title text-break';
-        title.textContent = 'Onay';
-
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'btn-close';
-        closeButton.setAttribute('aria-label', 'Close');
-
-        header.appendChild(title);
-        header.appendChild(closeButton);
-
-        const body = document.createElement('main');
-        body.className = 'modal-body';
-        body.textContent = message;
-
-        const footer = document.createElement('footer');
-        footer.className = 'modal-footer justify-content-start';
-
-        const yesButton = document.createElement('button');
-        yesButton.className = 'btn btn-primary me-2';
-        yesButton.textContent = 'Evet';
-
-        const noButton = document.createElement('button');
-        noButton.className = 'btn btn-secondary';
-        noButton.textContent = 'Hayır';
-
-        footer.appendChild(yesButton);
-        footer.appendChild(noButton);
-
-        content.appendChild(header);
-        content.appendChild(body);
-        content.appendChild(footer);
-        dialog.appendChild(content);
-
-        document.body.appendChild(container);
-
-        const closeModal = () => {
-            container.remove();
-            backdrop.remove();
-        };
-
-        yesButton.addEventListener('click', () => {
-            closeModal();
-            if (onConfirm) onConfirm();
-        });
-
-        noButton.addEventListener('click', () => {
-            closeModal();
-            if (onCancel) onCancel();
-        });
-
-        closeButton.addEventListener('click', () => {
-            closeModal();
-        });
-
-        backdrop.addEventListener('click', () => {
-            closeModal();
-        });
-
-        yesButton.focus();
-    }
-
-    function checkSelectionWarning(callback) {
-        const selectionBox = document.querySelector('div.list-group[role="alert"] .list-group-item');
-        if (!selectionBox) {
-            callback();
-            return;
+            if (href.includes("model=gib.incoming.despatch")) {
+                return "despatch";
+            }
+            if (href.includes("model=account.move")) {
+                const action = getActionParam();
+                if (action === "245") {
+                    return "supplier";
+                } else if (action === "243") {
+                    return "customer";
+                }
+            }
+            return null;
         }
 
-        const selectAllBtn = selectionBox.querySelector('.btn-info');
-        if (selectAllBtn) {
-            callback();
-            return;
+        function isInvoicePage() {
+            const type = getInvoiceType();
+            return (type === "incoming" || type === "supplier" || type === "customer" || type === "despatch");
         }
 
-        const firstChild = selectionBox.firstElementChild;
-        if (firstChild && firstChild.tagName === 'SPAN') {
-            const totalCount = firstChild.querySelector('b')?.textContent || 'BİLİNMEYEN';
-            const pageCount = getSelectedRows().length;
+        function getIdColumnName() {
+            const type = getInvoiceType();
+            return type === "supplier" ? "x_studio_pdf_id" : "id";
+        }
 
-            if (String(totalCount) !== String(pageCount)) {
-                const message = `Toplamda ${totalCount} kayıt seçilmiş fakat devam etmeniz halinde sadece ekranda gözüken ${pageCount} kayıt dikkate alınacaktır. Devam edilsin mi?`;
-                showConfirmDialog(message, callback, () => {});
+        function getSelectedRows() {
+            return document.querySelectorAll('tr.o_data_row.o_data_row_selected');
+        }
+
+        function createModalBackdrop() {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade show';
+            backdrop.style.zIndex = '1040';
+            return backdrop;
+        }
+
+        function createModalContainer() {
+            const container = document.createElement('div');
+            container.className = 'modal fade show';
+            container.style.display = 'block';
+            container.style.zIndex = '1050';
+            container.setAttribute('tabindex', '-1');
+            container.setAttribute('aria-modal', 'true');
+            container.setAttribute('role', 'dialog');
+
+            const dialog = document.createElement('div');
+            dialog.className = 'modal-dialog modal-dialog-centered modal-md';
+
+            container.appendChild(dialog);
+            return { container, dialog };
+        }
+
+        function showCustomAlert(message) {
+            const existingModals = document.querySelectorAll('.custom-alert-modal');
+            existingModals.forEach(modal => modal.remove());
+
+            const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-alert');
+            existingBackdrops.forEach(backdrop => backdrop.remove());
+
+            const backdrop = createModalBackdrop();
+            backdrop.classList.add('custom-alert');
+            document.body.appendChild(backdrop);
+
+            const { container, dialog } = createModalContainer();
+            container.classList.add('custom-alert-modal');
+
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+
+            const header = document.createElement('header');
+            header.className = 'modal-header';
+
+            const title = document.createElement('h4');
+            title.className = 'modal-title text-break';
+            title.textContent = 'Bilgi';
+
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'btn-close';
+            closeButton.setAttribute('aria-label', 'Close');
+
+            header.appendChild(title);
+            header.appendChild(closeButton);
+
+            const body = document.createElement('main');
+            body.className = 'modal-body';
+            body.textContent = message;
+
+            const footer = document.createElement('footer');
+            footer.className = 'modal-footer justify-content-start';
+
+            const okButton = document.createElement('button');
+            okButton.className = 'btn btn-primary';
+            okButton.textContent = 'Tamam';
+
+            footer.appendChild(okButton);
+
+            content.appendChild(header);
+            content.appendChild(body);
+            content.appendChild(footer);
+            dialog.appendChild(content);
+
+            document.body.appendChild(container);
+
+            const closeModal = () => {
+                container.remove();
+                backdrop.remove();
+            };
+
+            okButton.addEventListener('click', closeModal);
+            closeButton.addEventListener('click', closeModal);
+            backdrop.addEventListener('click', closeModal);
+
+            okButton.focus();
+        }
+
+        function showConfirmDialog(message, onConfirm, onCancel) {
+            const existingModals = document.querySelectorAll('.custom-confirm-modal');
+            existingModals.forEach(modal => modal.remove());
+
+            const existingBackdrops = document.querySelectorAll('.modal-backdrop.custom-confirm');
+            existingBackdrops.forEach(backdrop => backdrop.remove());
+
+            const backdrop = createModalBackdrop();
+            backdrop.classList.add('custom-confirm');
+            document.body.appendChild(backdrop);
+
+            const { container, dialog } = createModalContainer();
+            container.classList.add('custom-confirm-modal');
+
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+
+            const header = document.createElement('header');
+            header.className = 'modal-header';
+
+            const title = document.createElement('h4');
+            title.className = 'modal-title text-break';
+            title.textContent = 'Onay';
+
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'btn-close';
+            closeButton.setAttribute('aria-label', 'Close');
+
+            header.appendChild(title);
+            header.appendChild(closeButton);
+
+            const body = document.createElement('main');
+            body.className = 'modal-body';
+            body.textContent = message;
+
+            const footer = document.createElement('footer');
+            footer.className = 'modal-footer justify-content-start';
+
+            const yesButton = document.createElement('button');
+            yesButton.className = 'btn btn-primary me-2';
+            yesButton.textContent = 'Evet';
+
+            const noButton = document.createElement('button');
+            noButton.className = 'btn btn-secondary';
+            noButton.textContent = 'Hayır';
+
+            footer.appendChild(yesButton);
+            footer.appendChild(noButton);
+
+            content.appendChild(header);
+            content.appendChild(body);
+            content.appendChild(footer);
+            dialog.appendChild(content);
+
+            document.body.appendChild(container);
+
+            const closeModal = () => {
+                container.remove();
+                backdrop.remove();
+            };
+
+            yesButton.addEventListener('click', () => {
+                closeModal();
+                if (onConfirm) onConfirm();
+            });
+
+            noButton.addEventListener('click', () => {
+                closeModal();
+                if (onCancel) onCancel();
+            });
+
+            closeButton.addEventListener('click', () => {
+                closeModal();
+            });
+
+            backdrop.addEventListener('click', () => {
+                closeModal();
+            });
+
+            yesButton.focus();
+        }
+
+        function checkSelectionWarning(callback) {
+            const selectionBox = document.querySelector('div.list-group[role="alert"] .list-group-item');
+            if (!selectionBox) {
+                callback();
+                return;
+            }
+
+            const selectAllBtn = selectionBox.querySelector('.btn-info');
+            if (selectAllBtn) {
+                callback();
+                return;
+            }
+
+            const firstChild = selectionBox.firstElementChild;
+            if (firstChild && firstChild.tagName === 'SPAN') {
+                const totalCount = firstChild.querySelector('b')?.textContent || 'BİLİNMEYEN';
+                const pageCount = getSelectedRows().length;
+
+                if (String(totalCount) !== String(pageCount)) {
+                    const message = `Toplamda ${totalCount} kayıt seçilmiş fakat devam etmeniz halinde sadece ekranda gözüken ${pageCount} kayıt dikkate alınacaktır. Devam edilsin mi?`;
+                    showConfirmDialog(message, callback, () => {});
+                } else {
+                    callback();
+                }
             } else {
                 callback();
             }
-        } else {
-            callback();
-        }
-    }
-
-    function getMissingColumns() {
-        const type = getInvoiceType();
-        let requiredColumns = [];
-
-        if (type === "supplier") {
-            requiredColumns = ["x_studio_pdf_id", "gib_invoice_name"];
-        } else if (type === "incoming") {
-            requiredColumns = ["id", "name"];
-        } else if (type === "customer") {
-            requiredColumns = ["id", "gib_invoice_name"];
-        } else if (type === "despatch") {
-            requiredColumns = ["id", "name"];
-        } else {
-            return [];
         }
 
-        const headers = document.querySelectorAll('th.o_column_sortable');
-        const visibleColumns = new Set();
-        headers.forEach(h => {
-            const dataName = h.getAttribute('data-name');
-            if (dataName) {
-                visibleColumns.add(dataName);
+        function getMissingColumns() {
+            const type = getInvoiceType();
+            let requiredColumns = [];
+
+            if (type === "supplier") {
+                requiredColumns = ["x_studio_pdf_id", "gib_invoice_name"];
+            } else if (type === "incoming") {
+                requiredColumns = ["id", "name"];
+            } else if (type === "customer") {
+                requiredColumns = ["id", "gib_invoice_name"];
+            } else if (type === "despatch") {
+                requiredColumns = ["id", "name"];
+            } else {
+                return [];
             }
-        });
 
-        const missing = requiredColumns.filter(col => !visibleColumns.has(col));
-        return missing;
-    }
+            const headers = document.querySelectorAll('th.o_column_sortable');
+            const visibleColumns = new Set();
+            headers.forEach(h => {
+                const dataName = h.getAttribute('data-name');
+                if (dataName) {
+                    visibleColumns.add(dataName);
+                }
+            });
 
-    function checkIdColumnAndProcess(callback) {
-        const missingColumns = getMissingColumns();
-
-        if (missingColumns.length > 0) {
-            const missingColsStr = missingColumns.join(', ');
-            showCustomAlert(`Bu özelliğin çalışabilmesi için şu alanları göstermeniz gerekmektedir: ${missingColsStr}`);
-            return false;
+            const missing = requiredColumns.filter(col => !visibleColumns.has(col));
+            return missing;
         }
-        callback();
-        return true;
-    }
 
-    function isProcessing() {
-		return document.getElementById("o_bulk_blockui") !== null;
-    }
+        function checkIdColumnAndProcess(callback) {
+            const missingColumns = getMissingColumns();
 
-	const bulkProgress = {
-		startTime: null,
-		totalFiles: 0,
-		container: null,
-		batchCountSpan: null,
-		batchTotalSpan: null,
-		timeLeftSpan: null,
-		percentSpan: null,
-		progressBarInner: null,
-		abortController: null,
-	};
+            if (missingColumns.length > 0) {
+                const missingColsStr = missingColumns.join(', ');
+                showCustomAlert(`Bu özelliğin çalışabilmesi için şu alanları göstermeniz gerekmektedir: ${missingColsStr}`);
+                return false;
+            }
+            callback();
+            return true;
+        }
 
-	function formatTimeRemaining(totalSeconds) {
-		if (totalSeconds < 60) {
-			return `${Math.round(totalSeconds)} saniye`;
-		}
-		const minutes = Math.floor(totalSeconds / 60);
-		const seconds = Math.round(totalSeconds % 60);
-		return `${minutes} dakika ${seconds} saniye`;
-	}
+        function isProcessing() {
+            return document.getElementById("o_bulk_blockui") !== null;
+        }
 
-	function showFullScreenProgress(totalFiles) {
-		const mainContainer = document.querySelector('.o-main-components-container');
-		if (document.getElementById('o_bulk_blockui')) return;
-		bulkProgress.startTime = Date.now();
-		bulkProgress.totalFiles = totalFiles;
-		bulkProgress.abortController = new AbortController();
+        const bulkProgress = {
+            startTime: null,
+            totalFiles: 0,
+            container: null,
+            batchCountSpan: null,
+            batchTotalSpan: null,
+            timeLeftSpan: null,
+            percentSpan: null,
+            progressBarInner: null,
+            abortController: null,
+        };
 
-		const wrapper = document.createElement('div');
-		wrapper.id = 'o_bulk_blockui';
-		wrapper.className = 'o_blockUI fixed-top d-flex justify-content-center align-items-center flex-column vh-100 bg-black-50';
+        function formatTimeRemaining(totalSeconds) {
+            if (totalSeconds < 60) {
+                return `${Math.round(totalSeconds)} saniye`;
+            }
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = Math.round(totalSeconds % 60);
+            return `${minutes} dakika ${seconds} saniye`;
+        }
 
-		const spinner = document.createElement('div');
-		spinner.className = 'o_spinner mb-4';
-		spinner.innerHTML = '<img src="/web/static/img/spin.svg" alt="Yükleniyor...">';
-		wrapper.appendChild(spinner);
+        function showFullScreenProgress(totalFiles) {
+            const mainContainer = document.querySelector('.o-main-components-container');
+            if (document.getElementById('o_bulk_blockui')) return;
+            bulkProgress.startTime = Date.now();
+            bulkProgress.totalFiles = totalFiles;
+            bulkProgress.abortController = new AbortController();
 
-		const content = document.createElement('div');
-		const message = document.createElement('div');
-		message.className = 'o_message text-center px-4';
-		message.textContent = 'İndiriliyor...';
-		content.appendChild(message);
+            const wrapper = document.createElement('div');
+            wrapper.id = 'o_bulk_blockui';
+            wrapper.className = 'o_blockUI fixed-top d-flex justify-content-center align-items-center flex-column vh-100 bg-black-50';
 
-		const progressWrap = document.createElement('div');
-		progressWrap.className = 'o_import_data_progress d-flex align-items-center flex-column';
+            const spinner = document.createElement('div');
+            spinner.className = 'o_spinner mb-4';
+            spinner.innerHTML = '<img src="/web/static/img/spin.svg" alt="Yükleniyor...">';
+            wrapper.appendChild(spinner);
 
-		const batch = document.createElement('div');
-		batch.className = 'o_import_progress_dialog_batch text-center';
-		batch.innerHTML = '<span class="o_import_progress_dialog_batch_total">0</span> öğeden <span class="o_import_progress_dialog_batch_count">0</span> tanesi indirildi <div class="o_import_progress_dialog_time_left"><span>Tahmini kalan süre:</span><span class="o_import_progress_dialog_time_left_text mx-1">-</span></div>';
-		progressWrap.appendChild(batch);
+            const content = document.createElement('div');
+            const message = document.createElement('div');
+            message.className = 'o_message text-center px-4';
+            message.textContent = 'İndiriliyor...';
+            content.appendChild(message);
 
-		const barRow = document.createElement('div');
-		barRow.className = 'd-flex align-items-center mt-2';
-		const barOuter = document.createElement('div');
-		barOuter.className = 'progress flex-grow-1 rounded-3';
-		const barInner = document.createElement('div');
-		barInner.className = 'progress-bar progress-bar-striped';
-		barInner.setAttribute('role', 'progressbar');
-		barInner.setAttribute('aria-valuenow', '0');
-		barInner.setAttribute('aria-valuemin', '0');
-		barInner.setAttribute('aria-valuemax', '100');
-		barInner.setAttribute('aria-label', 'İlerleme Çubuğu');
-		barInner.setAttribute('style', 'width: 0%');
-		const percentSpan = document.createElement('span');
-		percentSpan.className = 'fs-4';
-		percentSpan.textContent = '0%';
-		barInner.appendChild(percentSpan);
-		barOuter.appendChild(barInner);
-		barRow.appendChild(barOuter);
+            const progressWrap = document.createElement('div');
+            progressWrap.className = 'o_import_data_progress d-flex align-items-center flex-column';
 
-		const cancelButton = document.createElement('a');
-		cancelButton.className = 'o_progress_stop_import ms-2';
-		cancelButton.setAttribute('role', 'button');
-		cancelButton.innerHTML = '<i class="fa fa-close fs-2 text-danger" aria-label="İptal et" title="İptal et"></i>';
-		cancelButton.addEventListener('click', () => {
-			bulkProgress.abortController.abort();
-			hideFullScreenProgress();
-		});
-		barRow.appendChild(cancelButton);
+            const batch = document.createElement('div');
+            batch.className = 'o_import_progress_dialog_batch text-center';
+            batch.innerHTML = '<span class="o_import_progress_dialog_batch_total">0</span> öğeden <span class="o_import_progress_dialog_batch_count">0</span> tanesi indirildi <div class="o_import_progress_dialog_time_left"><span>Tahmini kalan süre:</span><span class="o_import_progress_dialog_time_left_text mx-1">-</span></div>';
+            progressWrap.appendChild(batch);
 
-		progressWrap.appendChild(barRow);
-		content.appendChild(progressWrap);
-		wrapper.appendChild(content);
+            const barRow = document.createElement('div');
+            barRow.className = 'd-flex align-items-center mt-2';
+            const barOuter = document.createElement('div');
+            barOuter.className = 'progress flex-grow-1 rounded-3';
+            const barInner = document.createElement('div');
+            barInner.className = 'progress-bar progress-bar-striped';
+            barInner.setAttribute('role', 'progressbar');
+            barInner.setAttribute('aria-valuenow', '0');
+            barInner.setAttribute('aria-valuemin', '0');
+            barInner.setAttribute('aria-valuemax', '100');
+            barInner.setAttribute('aria-label', 'İlerleme Çubuğu');
+            barInner.setAttribute('style', 'width: 0%');
+            const percentSpan = document.createElement('span');
+            percentSpan.className = 'fs-4';
+            percentSpan.textContent = '0%';
+            barInner.appendChild(percentSpan);
+            barOuter.appendChild(barInner);
+            barRow.appendChild(barOuter);
 
-		(btoa('x') && mainContainer ? mainContainer : document.body).appendChild(wrapper);
+            const cancelButton = document.createElement('a');
+            cancelButton.className = 'o_progress_stop_import ms-2';
+            cancelButton.setAttribute('role', 'button');
+            cancelButton.innerHTML = '<i class="fa fa-close fs-2 text-danger" aria-label="İptal et" title="İptal et"></i>';
+            cancelButton.addEventListener('click', () => {
+                bulkProgress.abortController.abort();
+                hideFullScreenProgress();
+            });
+            barRow.appendChild(cancelButton);
 
-		bulkProgress.container = wrapper;
-		bulkProgress.batchCountSpan = wrapper.querySelector('.o_import_progress_dialog_batch_count');
-		bulkProgress.batchTotalSpan = wrapper.querySelector('.o_import_progress_dialog_batch_total');
-		bulkProgress.timeLeftSpan = wrapper.querySelector('.o_import_progress_dialog_time_left_text');
-		bulkProgress.percentSpan = percentSpan;
-		bulkProgress.progressBarInner = barInner;
+            progressWrap.appendChild(barRow);
+            content.appendChild(progressWrap);
+            wrapper.appendChild(content);
 
-		bulkProgress.batchCountSpan.textContent = '0';
-		bulkProgress.batchTotalSpan.textContent = String(totalFiles);
-	}
+            (btoa('x') && mainContainer ? mainContainer : document.body).appendChild(wrapper);
 
-	function updateFullScreenProgress(doneCount) {
-		if (!bulkProgress.container) return;
-		const total = bulkProgress.totalFiles || 1;
-		const percent = Math.round((doneCount / total) * 100);
-		const elapsedMs = Date.now() - bulkProgress.startTime;
-		const perItemMs = doneCount > 0 ? elapsedMs / doneCount : 0;
-		const remainingMs = perItemMs * Math.max(total - doneCount, 0);
-		const remainingSeconds = remainingMs / 1000;
+            bulkProgress.container = wrapper;
+            bulkProgress.batchCountSpan = wrapper.querySelector('.o_import_progress_dialog_batch_count');
+            bulkProgress.batchTotalSpan = wrapper.querySelector('.o_import_progress_dialog_batch_total');
+            bulkProgress.timeLeftSpan = wrapper.querySelector('.o_import_progress_dialog_time_left_text');
+            bulkProgress.percentSpan = percentSpan;
+            bulkProgress.progressBarInner = barInner;
 
-		bulkProgress.batchCountSpan.textContent = String(doneCount);
-		bulkProgress.percentSpan.textContent = `${percent}%`;
-		bulkProgress.progressBarInner.setAttribute('style', `width: ${percent}%`);
-		bulkProgress.progressBarInner.setAttribute('aria-valuenow', String(percent));
-		bulkProgress.timeLeftSpan.textContent = doneCount === 0 ? '-' : formatTimeRemaining(remainingSeconds);
-	}
+            bulkProgress.batchCountSpan.textContent = '0';
+            bulkProgress.batchTotalSpan.textContent = String(totalFiles);
+        }
 
-	function hideFullScreenProgress() {
-		if (!bulkProgress.container) return;
-		const node = bulkProgress.container;
-		bulkProgress.container = null;
-		setTimeout(() => node && node.remove(), 300);
-	}
+        function updateFullScreenProgress(doneCount) {
+            if (!bulkProgress.container) return;
+            const total = bulkProgress.totalFiles || 1;
+            const percent = Math.round((doneCount / total) * 100);
+            const elapsedMs = Date.now() - bulkProgress.startTime;
+            const perItemMs = doneCount > 0 ? elapsedMs / doneCount : 0;
+            const remainingMs = perItemMs * Math.max(total - doneCount, 0);
+            const remainingSeconds = remainingMs / 1000;
 
-    function getInvoiceId(row) {
-        const cell = row.querySelector(`td[name="${getIdColumnName()}"]`);
-        return cell ? cell.textContent.trim() : "";
-    }
+            bulkProgress.batchCountSpan.textContent = String(doneCount);
+            bulkProgress.percentSpan.textContent = `${percent}%`;
+            bulkProgress.progressBarInner.setAttribute('style', `width: ${percent}%`);
+            bulkProgress.progressBarInner.setAttribute('aria-valuenow', String(percent));
+            bulkProgress.timeLeftSpan.textContent = doneCount === 0 ? '-' : formatTimeRemaining(remainingSeconds);
+        }
 
-    function getInvoiceNo(row) {
-        if (window.location.href.includes("model=account.move")) {
-            const cell = row.querySelector('td[name="gib_invoice_name"]');
-            return cell ? cell.textContent.trim() : "";
-        } else if (window.location.href.includes("model=gib.incoming.despatch")) {
-            const cell = row.querySelector('td[name="name"]');
-            return cell ? cell.textContent.trim() : "";
-        } else {
-            const cell = row.querySelector('td[name="name"]');
+        function hideFullScreenProgress() {
+            if (!bulkProgress.container) return;
+            const node = bulkProgress.container;
+            bulkProgress.container = null;
+            setTimeout(() => node && node.remove(), 300);
+        }
+
+        function getInvoiceId(row) {
+            const cell = row.querySelector(`td[name="${getIdColumnName()}"]`);
             return cell ? cell.textContent.trim() : "";
         }
-    }
 
-    function getPdfUrl(invoiceId) {
-        const baseUrl = window.location.origin;
-        const type = getInvoiceType();
-        if (type === "supplier") {
-            return `${baseUrl}/web/content/${invoiceId}`;
-        } else if (type === "incoming") {
-            return `${baseUrl}/gib_invoice_2kb/pdf/incoming/${invoiceId}`;
-        } else if (type === "customer") {
-            return `${baseUrl}/gib_invoice_2kb/pdf2/${invoiceId}`;
-        } else if (type === "despatch") {
-            return `${baseUrl}/gib_picking_2kb/pdf/gid/${invoiceId}`;
+        function getInvoiceNo(row) {
+            if (window.location.href.includes("model=account.move")) {
+                const cell = row.querySelector('td[name="gib_invoice_name"]');
+                return cell ? cell.textContent.trim() : "";
+            } else if (window.location.href.includes("model=gib.incoming.despatch")) {
+                const cell = row.querySelector('td[name="name"]');
+                return cell ? cell.textContent.trim() : "";
+            } else {
+                const cell = row.querySelector('td[name="name"]');
+                return cell ? cell.textContent.trim() : "";
+            }
         }
-    }
 
-    function openSelectedPDFs() {
-        if(isProcessing()){
-            showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
-            return;
+        function getPdfUrl(invoiceId) {
+            const baseUrl = window.location.origin;
+            const type = getInvoiceType();
+            if (type === "supplier") {
+                return `${baseUrl}/web/content/${invoiceId}`;
+            } else if (type === "incoming") {
+                return `${baseUrl}/gib_invoice_2kb/pdf/incoming/${invoiceId}`;
+            } else if (type === "customer") {
+                return `${baseUrl}/gib_invoice_2kb/pdf2/${invoiceId}`;
+            } else if (type === "despatch") {
+                return `${baseUrl}/gib_picking_2kb/pdf/gid/${invoiceId}`;
+            }
         }
-        checkIdColumnAndProcess(() => {
+
+        function openSelectedPDFs() {
+            if (isProcessing()) {
+                showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
+                return;
+            }
+            checkIdColumnAndProcess(() => {
+                const selectedRows = getSelectedRows();
+                if (selectedRows.length === 0) {
+                    showCustomAlert("Lütfen en az bir fatura seçiniz!");
+                    return;
+                }
+
+                checkSelectionWarning(() => {
+                    if (selectedRows.length > 10) {
+                        showConfirmDialog(
+                            `Toplam ${selectedRows.length} adet kayıt yeni sekmede açılacak, onaylıyor musunuz?`,
+                            () => {
+                                selectedRows.forEach(row => {
+                                    const invoiceId = getInvoiceId(row);
+                                    const url = getPdfUrl(invoiceId);
+                                    window.open(url, '_blank');
+                                });
+                            },
+                            () => {}
+                        );
+                    } else {
+                        selectedRows.forEach(row => {
+                            const invoiceId = getInvoiceId(row);
+                            const url = getPdfUrl(invoiceId);
+                            window.open(url, '_blank');
+                        });
+                    }
+                });
+            });
+        }
+
+        function downloadSelectedPDFs() {
+            if (isProcessing()) {
+                showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
+                return;
+            }
+            if (!checkIdColumnAndProcess(() => {})) return;
             const selectedRows = getSelectedRows();
             if (selectedRows.length === 0) {
                 showCustomAlert("Lütfen en az bir fatura seçiniz!");
@@ -468,197 +509,188 @@
             }
 
             checkSelectionWarning(() => {
-                if (selectedRows.length > 10) {
-                    showConfirmDialog(
-                        `Toplam ${selectedRows.length} adet kayıt yeni sekmede açılacak, onaylıyor musunuz?`,
-                        () => {
-                            selectedRows.forEach(row => {
-                                const invoiceId = getInvoiceId(row);
-                                const url = getPdfUrl(invoiceId);
-                                window.open(url, '_blank');
-                            });
-                        },
-                        () => {
-                        }
-                    );
+                if (selectedRows.length === 1) {
+                    const invoiceId = getInvoiceId(selectedRows[0]);
+                    const invoiceNo = getInvoiceNo(selectedRows[0]);
+                    const url = getPdfUrl(invoiceId);
+                    downloadSinglePDF(url, `${invoiceNo}.pdf`);
                 } else {
-                    selectedRows.forEach(row => {
-                        const invoiceId = getInvoiceId(row);
-                        const url = getPdfUrl(invoiceId);
-                        window.open(url, '_blank');
-                    });
+                    downloadMultiplePDFsAsZip(selectedRows);
                 }
             });
-        });
-    }
-
-    function downloadSelectedPDFs() {
-        if(isProcessing()){
-            showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
-            return;
-        }
-        if (!checkIdColumnAndProcess(() => {})) return;
-        const selectedRows = getSelectedRows();
-        if (selectedRows.length === 0) {
-            showCustomAlert("Lütfen en az bir fatura seçiniz!");
-            return;
         }
 
-        checkSelectionWarning(() => {
-            if (selectedRows.length === 1) {
-                const invoiceId = getInvoiceId(selectedRows[0]);
-                const invoiceNo = getInvoiceNo(selectedRows[0]);
-                const url = getPdfUrl(invoiceId);
-                downloadSinglePDF(url, `${invoiceNo}.pdf`);
+        function downloadSinglePDF(url, filename) {
+            if (window.location.href.includes("model=account.move")) {
+                fetch(url)
+                    .then(response => response.blob())
+                    .then(blob => {
+                        saveAs(blob, filename);
+                    })
+                    .catch(error => console.error("PDF indirme hatası:", error));
             } else {
-                downloadMultiplePDFsAsZip(selectedRows);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
             }
-        });
-    }
-
-    function downloadSinglePDF(url, filename) {
-        if (window.location.href.includes("model=account.move")) {
-            fetch(url)
-                .then(response => response.blob())
-                .then(blob => {
-                    saveAs(blob, filename);
-                })
-                .catch(error => console.error("PDF indirme hatası:", error));
-        } else {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-    }
-
-	function downloadMultiplePDFsAsZip(selectedRows) {
-		const zip = new JSZip();
-		let count = 0;
-		const totalFiles = selectedRows.length;
-		showFullScreenProgress(totalFiles);
-		updateFullScreenProgress(0);
-		selectedRows.forEach(row => {
-			const invoiceId = getInvoiceId(row);
-			const invoiceNo = getInvoiceNo(row);
-			const url = getPdfUrl(invoiceId);
-			fetch(url, { signal: bulkProgress.abortController.signal })
-				.then(response => response.blob())
-				.then(blob => {
-					if (bulkProgress.abortController.signal.aborted) return;
-					zip.file(`${invoiceNo}.pdf`, blob);
-					count++;
-					updateFullScreenProgress(count);
-					if (count === totalFiles) {
-						zip.generateAsync({ type: "blob" }).then(content => {
-							saveAs(content, "Faturalar.zip");
-							hideFullScreenProgress();
-						});
-					}
-				})
-				.catch(error => {
-					if (!bulkProgress.abortController.signal.aborted) {
-						console.error("PDF indirme hatası:", error);
-					}
-				});
-		});
-	}
-
-    async function mergePDFsIntoOne() {
-        if(isProcessing()){
-            showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
-            return;
-        }
-        if (!checkIdColumnAndProcess(() => {})) return;
-        const selectedRows = getSelectedRows();
-        if (selectedRows.length === 0) {
-            showCustomAlert("Lütfen en az bir fatura seçiniz!");
-            return;
         }
 
-        checkSelectionWarning(() => {
-            showConfirmDialog(
-                "Sadece ilk sayfalar baz alınsın mı?",
-                () => mergePDFs(selectedRows, true),
-                () => mergePDFs(selectedRows, false)
-            );
-        });
-    }
-
-    async function mergePDFs(selectedRows, firstPageOnly) {
-        showFullScreenProgress(selectedRows.length);
-        updateFullScreenProgress(0);
-        const mergedPdf = await PDFLib.PDFDocument.create();
-        let count = 0;
-        const totalFiles = selectedRows.length;
-
-        for (const row of selectedRows) {
-            if (bulkProgress.abortController.signal.aborted) break;
-            const invoiceId = getInvoiceId(row);
-            const url = getPdfUrl(invoiceId);
-            try {
-                const response = await fetch(url, { signal: bulkProgress.abortController.signal });
-                const arrayBuffer = await response.arrayBuffer();
-                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-
-                if (firstPageOnly) {
-                    const [firstPage] = await mergedPdf.copyPages(pdfDoc, [0]);
-                    mergedPdf.addPage(firstPage);
-                } else {
-                    const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
-                    copiedPages.forEach(page => mergedPdf.addPage(page));
-                }
-            } catch (error) {
-                if (!bulkProgress.abortController.signal.aborted) {
-                    console.error(`PDF indirme hatası: ${error}`);
-                }
-            }
-            count++;
-            updateFullScreenProgress(count);
-        }
-
-        if (!bulkProgress.abortController.signal.aborted) {
-            const mergedPdfBytes = await mergedPdf.save();
-            const blob = new Blob([mergedPdfBytes], { type: "application/pdf" });
-            const filename = firstPageOnly ? "Faturalar_Birlesik_IlkSayfalar.pdf" : "Faturalar_Birlesik.pdf";
-            saveAs(blob, filename);
-        }
-        hideFullScreenProgress();
-    }
-
-    function removeFocusFromOriginalButtons() {
-        const originalButtons = document.querySelectorAll('.o_cp_action_menus .dropdown-item.o_menu_item');
-        originalButtons.forEach(button => {
-            button.classList.remove('focus');
-        });
-    }
-
-    function addPdfButtons() {
-        if (!isInvoicePage()) return;
-        const menus = document.querySelectorAll('.o_cp_action_menus .dropdown-menu');
-        menus.forEach(menu => {
-            if (menu.closest('.o_control_panel_breadcrumbs_actions')) return;
-            if (menu.querySelector('.pdf-download-button')) return;
-            let buttons = [
-                { className: 'pdf-open-button', icon: 'fa-file-pdf-o', text: 'PDF aç', onClick: openSelectedPDFs },
-                { className: 'pdf-download-button', icon: 'fa-download', text: 'PDF indir', onClick: downloadSelectedPDFs },
-                { className: 'pdf-merge-button', icon: 'fa-files-o', text: 'Birleştirip indir', onClick: mergePDFsIntoOne }
-            ];
-            if(getInvoiceType() === "customer" || getInvoiceType() === "despatch") {
-                buttons = buttons.filter(btn => btn.className !== "pdf-open-button");
-            }
-            buttons.reverse().forEach(btn => {
-                const button = document.createElement('span');
-                button.className = `dropdown-item o_menu_item ${btn.className}`;
-                button.innerHTML = `<i class="fa ${btn.icon} me-1 fa-fw oi-fw"></i>${btn.text}`;
-                menu.prepend(button);
-                button.addEventListener('click', btn.onClick);
-                button.addEventListener('mouseover', removeFocusFromOriginalButtons);
+        function downloadMultiplePDFsAsZip(selectedRows) {
+            const zip = new JSZip();
+            let count = 0;
+            const totalFiles = selectedRows.length;
+            showFullScreenProgress(totalFiles);
+            updateFullScreenProgress(0);
+            selectedRows.forEach(row => {
+                const invoiceId = getInvoiceId(row);
+                const invoiceNo = getInvoiceNo(row);
+                const url = getPdfUrl(invoiceId);
+                fetch(url, {
+                        signal: bulkProgress.abortController.signal
+                    })
+                    .then(response => response.blob())
+                    .then(blob => {
+                        if (bulkProgress.abortController.signal.aborted) return;
+                        zip.file(`${invoiceNo}.pdf`, blob);
+                        count++;
+                        updateFullScreenProgress(count);
+                        if (count === totalFiles) {
+                            zip.generateAsync({
+                                type: "blob"
+                            }).then(content => {
+                                saveAs(content, "Faturalar.zip");
+                                hideFullScreenProgress();
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        if (!bulkProgress.abortController.signal.aborted) {
+                            console.error("PDF indirme hatası:", error);
+                        }
+                    });
             });
+        }
+
+        async function mergePDFsIntoOne() {
+            if (isProcessing()) {
+                showCustomAlert("Önce mevcut işlemin tamamlanmasını bekleyin");
+                return;
+            }
+            if (!checkIdColumnAndProcess(() => {})) return;
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) {
+                showCustomAlert("Lütfen en az bir fatura seçiniz!");
+                return;
+            }
+
+            checkSelectionWarning(() => {
+                showConfirmDialog(
+                    "Sadece ilk sayfalar baz alınsın mı?",
+                    () => mergePDFs(selectedRows, true),
+                    () => mergePDFs(selectedRows, false)
+                );
+            });
+        }
+
+        async function mergePDFs(selectedRows, firstPageOnly) {
+            showFullScreenProgress(selectedRows.length);
+            updateFullScreenProgress(0);
+            const mergedPdf = await PDFLib.PDFDocument.create();
+            let count = 0;
+            const totalFiles = selectedRows.length;
+
+            for (const row of selectedRows) {
+                if (bulkProgress.abortController.signal.aborted) break;
+                const invoiceId = getInvoiceId(row);
+                const url = getPdfUrl(invoiceId);
+                try {
+                    const response = await fetch(url, {
+                        signal: bulkProgress.abortController.signal
+                    });
+                    const arrayBuffer = await response.arrayBuffer();
+                    const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+
+                    if (firstPageOnly) {
+                        const [firstPage] = await mergedPdf.copyPages(pdfDoc, [0]);
+                        mergedPdf.addPage(firstPage);
+                    } else {
+                        const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+                        copiedPages.forEach(page => mergedPdf.addPage(page));
+                    }
+                } catch (error) {
+                    if (!bulkProgress.abortController.signal.aborted) {
+                        console.error(`PDF indirme hatası: ${error}`);
+                    }
+                }
+                count++;
+                updateFullScreenProgress(count);
+            }
+
+            if (!bulkProgress.abortController.signal.aborted) {
+                const mergedPdfBytes = await mergedPdf.save();
+                const blob = new Blob([mergedPdfBytes], {
+                    type: "application/pdf"
+                });
+                const filename = firstPageOnly ? "Faturalar_Birlesik_IlkSayfalar.pdf" : "Faturalar_Birlesik.pdf";
+                saveAs(blob, filename);
+            }
+            hideFullScreenProgress();
+        }
+
+        function removeFocusFromOriginalButtons() {
+            const originalButtons = document.querySelectorAll('.o_cp_action_menus .dropdown-item.o_menu_item');
+            originalButtons.forEach(button => {
+                button.classList.remove('focus');
+            });
+        }
+
+        function addPdfButtons() {
+            if (!isInvoicePage()) return;
+            const menus = document.querySelectorAll('.o_cp_action_menus .dropdown-menu');
+            menus.forEach(menu => {
+                if (menu.closest('.o_control_panel_breadcrumbs_actions')) return;
+                if (menu.querySelector('.pdf-download-button')) return;
+                let buttons = [{
+                        className: 'pdf-open-button',
+                        icon: 'fa-file-pdf-o',
+                        text: 'PDF aç',
+                        onClick: openSelectedPDFs
+                    },
+                    {
+                        className: 'pdf-download-button',
+                        icon: 'fa-download',
+                        text: 'PDF indir',
+                        onClick: downloadSelectedPDFs
+                    },
+                    {
+                        className: 'pdf-merge-button',
+                        icon: 'fa-files-o',
+                        text: 'Birleştirip indir',
+                        onClick: mergePDFsIntoOne
+                    }
+                ];
+                if (getInvoiceType() === "customer" || getInvoiceType() === "despatch") {
+                    buttons = buttons.filter(btn => btn.className !== "pdf-open-button");
+                }
+                buttons.reverse().forEach(btn => {
+                    const button = document.createElement('span');
+                    button.className = `dropdown-item o_menu_item ${btn.className}`;
+                    button.innerHTML = `<i class="fa ${btn.icon} me-1 fa-fw oi-fw"></i>${btn.text}`;
+                    menu.prepend(button);
+                    button.addEventListener('click', btn.onClick);
+                    button.addEventListener('mouseover', removeFocusFromOriginalButtons);
+                });
+            });
+        }
+
+        new MutationObserver(addPdfButtons).observe(document.body, {
+            childList: true,
+            subtree: true
         });
     }
 
-    new MutationObserver(addPdfButtons).observe(document.body, { childList: true, subtree: true });
+    init();
 })();
